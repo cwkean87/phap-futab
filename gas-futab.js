@@ -401,7 +401,7 @@ function escapeQuotes(value) {
   }
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\\'");
 }
-
+//a new function which create a view of the base table and share with the particular data provider
 function createNewView(){
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Entry');
   var lRow = sheet.getLastRow();
@@ -409,31 +409,34 @@ function createNewView(){
   
   // Add the new user info to a new sheet to monitor user registration and to use as arg for create table view
   var newUserEmail = sheet.getRange(lRow, 3, 1, 1).getValue();
-  var reporter = sheet.getRange(lRow, 2, 1, 1).getValue();
+  var reporter = sheet.getRange(lRow, 2, 1, 1).getValue();// name of the reporter
   var userSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
+  //every 1st submission will be logged, email and link to the view file
   var existingEmails = userSheet.getRange(2,2,userSheet.getLastRow(),2).getValues();
   
   //start the arguement
   try{
-    //declare useris notexist in the database
+    //declare user is not exist in the database (user sheet)
     var userAlreadyExist = false;
-    var url;
+    var url;//standby for sendEmail function
     for (var value in existingEmails){
-      var foundEmail = existingEmails[value][0];
+      var foundEmail = existingEmails[value][0];//email is in the colunm 1 of the dataset
       
-      //cross check new user email with the database and if user email exist, return true and break the loop
+      //cross check new user email with the database and if user email already exist, return true and break the loop
       if(newUserEmail == foundEmail){
       userAlreadyExist = true;
-      url= existingEmails[value][1];break;
+      url= existingEmails[value][1];// since user already exist, url (colunm 2) for his view file should be available too
+      break;
       }
     }
-    Logger.log("user already exist??? = "+userAlreadyExist)
+    Logger.log("User already exist??? ==> "+userAlreadyExist);
     
-    // if not match found after the loop, create a new fusion table view and log the new user email into the database
+    // if no match found after the loop, create a new fusion table view and log the new user email & new view url into the database
     if(!userAlreadyExist){
       var newViewName = 'PHAP-'+reporter;
+      //column to select from the base table
       var columns = ['Timestamp', 'Name', 'Email', 'Date of assessment', 'Date of obtained consent', 'Time Interval', 'Client Initial', 'Age', 'Gender', 'Contact', 'Clinical Notes', 'Recommendation', 'Follow Up Clinical Notes', 'Outcome', 'Type of Follow Up', 'Type of Follow Up 2', 'Type of Follow Up 3', 'Type of Follow Up 4', 'Number of Recommendations', 'Number of Follow Up'];
-
+// construct a sql-like query
   var query = [];
   query.push('CREATE VIEW ');
   query.push("'"+newViewName+"'");
@@ -443,16 +446,19 @@ function createNewView(){
   query.push(columns.join("','"));
   query.push("' ");
   query.push("FROM ");
-  query.push('1xn2huYKKkWx-ETm3iF1Cb8uF0AsJtZgQk0BEw7jv');
+  query.push('DOCID');
   query.push(' WHERE Email = ');
   query.push("'"+newUserEmail+"'");
   query.push(")");
  
   runSqlWithRetry(query.join('')); 
       waitBetweenCalls();
+      //register the new user (first time user)
       userSheet.getRange(userSheet.getLastRow()+1, 1, 1, 2).setValues([[reporter, newUserEmail]]);
+      //function to add the user as editor of the view table to ensure he can contine provide data
       shareFile(newViewName, newUserEmail);
     }else{
+      //if user already exist, skip the view table creation and send a confirmation email directly to the user
     sendEmail(newUserEmail, url);
     }
   }
@@ -462,20 +468,23 @@ function createNewView(){
 
 function shareFile(fileName, email){
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Entry');
-  var keyword = sheet.getRange(sheet.getLastRow(), 2, 1, 1).getValue();
+  var keyword = sheet.getRange(sheet.getLastRow(), 2, 1, 1).getValue();//declare for shorten url
+  //function from the Utilities script, to make a string camelcase
   var customKeyword = toCamelCase(keyword);
  var userSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Users');
  var files = DocsList.find(fileName);
   var file = files[0];
   var rootFolder = DocsList.getRootFolder();
-  var folder = DocsList.getFolderById('0BxrbNZUvuKvqNEg0MmFOSTNfMlk');
+  var folder = DocsList.getFolderById('FOLDERID');
   if(file){
     file.addEditor(email);
     var url = file.getUrl();
+    //function from Utilities script
     var shortUrl = shortenUrl(url,fileName,customKeyword)
     userSheet.getRange(userSheet.getLastRow(), 3, 1, 1).setValue(shortUrl);
     file.addToFolder(folder);
     file.removeFromFolder(rootFolder);
+    //send a confirmation from this function if user is first time using the platform
     sendEmail(email, url);
   }
 }
